@@ -15,9 +15,7 @@ screen_w , screen_h = pyautogui.size()
 cap = cv2.VideoCapture(0)
 cap.set(3 , 640)
 cap.set(4 , 460)
-cap.set(cv2.CAP_PROP_BRIGHTNESS , 200)
-
-pev_time = 0 
+cap.set(cv2.CAP_PROP_BRIGHTNESS , 150)
 
 def fingers_up(hands_landmarks):
     tips = [4 , 8 , 12 , 16 , 20]
@@ -57,7 +55,7 @@ while True:
             x , y = int(index_tip.x*w) , int(index_tip.y*h)
 
             #drawing point for index 
-            cv2.circle(img , (x, y ) , 10 , (255 , 0 , 25 ) , cv2.FILLED)
+            cv2.circle(img , (x, y ) , 10 , (255 , 0 , 75 ) , cv2.FILLED)
 
             # getting fingers 
             fingers = fingers_up(hand_landmarks)
@@ -68,26 +66,23 @@ while True:
             if total_fingers == 1 and fingers[1] == 1 :
                 screen_x = int(index_tip.x*screen_w) 
                 screen_y = int(index_tip.y*screen_h)
-                pyautogui.moveTo(screen_x , screen_y , duration = 0.01)
+                pyautogui.moveTo(screen_x , screen_y , duration = 0.05)
                 pyautogui.FAILSAFE = False
                 # cv2.putText(img , "It is moving!" , (10,70) , cv2.FONT_HERSHEY_SIMPLEX , 1 , (0 , 255 , 25), 2)
                 # print("Your index is moving")
 
             elif total_fingers == 5 :
                 pyautogui.click()
-                time.sleep(0.8) #preventing double click
+                time.sleep(0.3) #preventing double click
                 # print("I have clicked it!")
                 
             elif total_fingers == 2 and fingers[1] == 1 and fingers[2] == 1 :
                 pyautogui.scroll(-15)
-                print("Scrolling in upward direction")
             elif total_fingers == 3 and fingers[1] == 1 and fingers[2] == 1 and fingers[3] == 1 :
                 pyautogui.scroll(15)
                 # print("Scrolling in downward direction!")
-        cv2.imshow("Hand Gesture Mouse" , img)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
 cap.release()
-
 cv2.destroyAllWindows()
