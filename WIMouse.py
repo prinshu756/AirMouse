@@ -4,6 +4,7 @@ import pyautogui
 import time
 import numpy as np
 
+# Initialize Mediapipe
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 hands = mp_hands.Hands(
@@ -12,40 +13,39 @@ hands = mp_hands.Hands(
     min_tracking_confidence=0.7
 )
 
-# for using and changing the screen size
+# Screen and camera setup
 screen_w, screen_h = pyautogui.size()
-
-# for the camera setup
 cap = cv2.VideoCapture(0)
 cap.set(3, 640)
 cap.set(4, 480)
 cap.set(cv2.CAP_PROP_BRIGHTNESS, 150)
 
-#function for checking which fingers are up and which are down
 def fingers_up(hand):
+    """Return list of which fingers are up."""
     tips = [4, 8, 12, 16, 20]
     fingers = []
-
-    # for detecting thumb
-    if hand.landmark[tips[0]].x < hand.landmark[tips[0] - 2].x:
-        fingers.append(1)
-    else:
-        fingers.append(0)
-
-    # for detecting other fingers
+    # Thumb
+    fingers.append(1 if hand.landmark[tips[0]].x < hand.landmark[tips[0] - 2].x else 0)
+    # Other fingers
     for id in range(1, 5):
-        if hand.landmark[tips[id]].y < hand.landmark[tips[id] - 2].y:
-            fingers.append(1)
-        else:
-            fingers.append(0)
+        fingers.append(1 if hand.landmark[tips[id]].y < hand.landmark[tips[id] - 2].y else 0)
     return fingers
 
-# for smoothing the cursor and avoiding the jitter
-smooth_x, smooth_y = 0, 0
-alpha = 0.25  
-#lower the value of alpha better will be the smoothing but it will also add lag sometimes
-
+# Variables
+prev_x, prev_y = 0, 0
+smooth_factor = 4
 prev_click_time = 0
+last_cursor_x, last_cursor_y = None, None  # Store last valid cursor position
+
+# Scrolling control
+scroll_threshold = 20
+last_scroll_time = 0
+scroll_cooldown = 0.2  # seconds between scrolls
+
+# Mouse control flag
+hand_active = False
+last_hand_seen_time = 0
+hand_timeout = 1.0  # seconds after which control releases to external mouse
 
 while True:
     success, img = cap.read()
@@ -53,53 +53,63 @@ while True:
         break
 
     img = cv2.flip(img, 1)
-    h, w, c = img.shape
+    h, w, _ = img.shape
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     result = hands.process(img_rgb)
 
     if result.multi_hand_landmarks:
+        hand_active = True
+        last_hand_seen_time = time.time()
+
         for hand_landmarks in result.multi_hand_landmarks:
             mp_draw.draw_landmarks(img, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-
-            #for index finger tip
-            index_tip = hand_landmarks.landmark[8]
-            x, y = int(index_tip.x * w), int(index_tip.y * h)
-            cv2.circle(img, (x, y), 10, (255, 0, 75), cv2.FILLED)
-
-            # for getting other fingers status
             fingers = fingers_up(hand_landmarks)
             total_fingers = fingers.count(1)
+            index_tip = hand_landmarks.landmark[8]
+            x, y = int(index_tip.x * w), int(index_tip.y * h)
 
-            # Map camera coordinates to screen coordinates
-            screen_x = np.interp(index_tip.x, [0.1, 0.9], [0, screen_w])
-            screen_y = np.interp(index_tip.y, [0.1, 0.9], [0, screen_h])
+            # Normalize and smooth cursor movement
+            norm_x = np.interp(x, [100, w - 100], [0, screen_w])
+            norm_y = np.interp(y, [100, h - 100], [0, screen_h])
+            curr_x = prev_x + (norm_x - prev_x) / smooth_factor
+            curr_y = prev_y + (norm_y - prev_y) / smooth_factor
+            prev_x, prev_y = curr_x, curr_y
 
-            # smoothnening the movement
-            smooth_x = smooth_x + alpha * (screen_x - smooth_x)
-            smooth_y = smooth_y + alpha * (screen_y - smooth_y)
-
-            pyautogui.FAILSAFE = False
-
-            # Cursor move (index finger only)
             if total_fingers == 1 and fingers[1] == 1:
-                pyautogui.moveTo(smooth_x, smooth_y, duration=0)
+                pyautogui.moveTo(curr_x, curr_y, duration=0)
+                last_cursor_x, last_cursor_y = curr_x, curr_y
 
-            # Click (all fingers open)
             elif total_fingers == 5:
                 now = time.time()
-                if now - prev_click_time > 0.4:  # avoid double click
+                if now - prev_click_time > 0.2:
                     pyautogui.click()
                     prev_click_time = now
 
-            # Scroll down (2 fingers)
-            elif total_fingers == 2 and fingers[1] == 1 and fingers[2] == 1:
-                pyautogui.scroll(-40)
+            elif total_fingers == 3:
+                now = time.time()
+                if now - last_scroll_time > scroll_cooldown:
+                    pyautogui.scroll(5)
+                    time.sleep(0.3)
+                    last_scroll_time = now
 
-            # Scroll up (3 fingers)
-            elif total_fingers == 3 and fingers[1] == 1 and fingers[2] == 1 and fingers[3] == 1:
-                pyautogui.scroll(40)
+            elif total_fingers == 2:
+                now = time.time()
+                if now - last_scroll_time > scroll_cooldown:
+                    pyautogui.scroll(-5)
+                    time.sleep(0.3)
+                    last_scroll_time = now
 
-    cv2.imshow("Virtual Mouse", img)
+            # elif total_fingers == 4:
+            #     pyautogui.hotkey('win', 'tab')
+            #     time.sleep(1)
+
+    else:
+        if time.time() - last_hand_seen_time > hand_timeout:
+            hand_active = False
+
+        if hand_active and last_cursor_x is not None and last_cursor_y is not None:
+            pyautogui.moveTo(last_cursor_x, last_cursor_y, duration=0)
+
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
