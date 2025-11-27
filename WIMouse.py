@@ -4,7 +4,7 @@ import pyautogui
 import time
 import numpy as np
 
-
+#initialising mediapipe
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 hands = mp_hands.Hands(
@@ -125,3 +125,4 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
+
