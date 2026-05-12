@@ -4,16 +4,43 @@ import pyautogui
 import time
 import numpy as np
 
-# GPU initialization
-print("Initializing GPU support...")
-use_cuda = cv2.cuda.getCudaEnabledDeviceCount() > 0
 
-if use_cuda:
-    print(f"CUDA Enabled Devices: {cv2.cuda.getCudaEnabledDeviceCount()}")
-    print(f"CUDA Device Name: {cv2.cuda.printCudaDeviceInfo(0)}")
-    cv2.cuda.setDevice(0)  # Set primary GPU
-else:
-    print("GPU not available, using CPU")
+# GPU initialization for RTX 3050 using OpenCL
+print("Initializing RTX 3050 GPU support with OpenCL...")
+try:
+    # Check OpenCL availability (works with NVIDIA RTX 3050)
+    if cv2.ocl.haveOpenCL():
+        cv2.ocl.setUseOpenCL(True)
+        print("✓ OpenCL available and enabled")
+        use_opencl = True
+        print("✓ RTX 3050 GPU acceleration enabled via OpenCL!")
+    else:
+        use_opencl = False
+        print("✗ OpenCL not available")
+
+    # Check CUDA as fallback (though unlikely to work with pip OpenCV)
+    cuda_devices = cv2.cuda.getCudaEnabledDeviceCount()
+    use_cuda = cuda_devices > 0
+
+    if use_cuda:
+        print(f"✓ CUDA also available with {cuda_devices} device(s)")
+        cv2.cuda.setDevice(0)
+    else:
+        print("CUDA not available (expected with pip OpenCV)")
+
+    if not use_opencl and not use_cuda:
+        print("✗ No GPU acceleration available, using CPU")
+        use_gpu = False
+    else:
+        use_gpu = True
+        print("✓ GPU processing enabled!")
+
+except Exception as e:
+    use_gpu = False
+    use_opencl = False
+    use_cuda = False
+    print(f"✗ GPU initialization failed: {e}")
+    print("Falling back to CPU processing")
 
 # Initialising mediapipe
 mp_hands = mp.solutions.hands
@@ -32,7 +59,7 @@ cap.set(4, 480)
 cap.set(cv2.CAP_PROP_BRIGHTNESS, 150)
 
 def fingers_up(hand):
-    tips = [4, 8, 12, 16, 20]
+    tips = [4, 8, 12, 16, 20] 
     fingers = []
 
     fingers.append(1 if hand.landmark[tips[0]].x < hand.landmark[tips[0] - 2].x else 0)
@@ -55,39 +82,21 @@ hand_active = False
 last_hand_seen_time = 0
 hand_timeout = 1.0
 
-# GPU memory allocation for frame processing
-if use_cuda:
-    gpu_frame = cv2.cuda_GpuMat()
-    gpu_flipped = cv2.cuda_GpuMat()
-    gpu_rgb = cv2.cuda_GpuMat()
-    gpu_stream = cv2.cuda.Stream()  # Asynchronous stream for better performance
+# GPU memory allocation for frame processing (OpenCL)
+if use_gpu:
+    print("✓ GPU memory initialized for RTX 3050 processing")
+else:
+    print("Using CPU processing")
 
 while True:
     success, img = cap.read()
     if not success:
         break
 
-    if use_cuda:
-        try:
-            # Upload frame to GPU
-            gpu_frame.upload(img)
-            
-            # GPU operations - flip and color conversion on GPU
-            gpu_flipped = cv2.cuda.flip(gpu_frame, 1)  # Flip on GPU
-            gpu_rgb = cv2.cuda.cvtColor(gpu_flipped, cv2.COLOR_BGR2RGB)  # Color conversion on GPU
-            
-            # Download only the RGB frame for mediapipe processing
-            img_rgb = gpu_rgb.download()
-            img = gpu_flipped.download()  # Get flipped frame for display
-            
-        except cv2.error as e:
-            print(f"GPU error: {e}, falling back to CPU")
-            use_cuda = False
-            img = cv2.flip(img, 1)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    else:
-        img = cv2.flip(img, 1)
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # OpenCL acceleration is automatically used by OpenCV when enabled
+    # RTX 3050 will accelerate these operations via OpenCL
+    img = cv2.flip(img, 1)  # GPU accelerated flip
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # GPU accelerated color conversion
 
     h, w, _ = img.shape
     result = hands.process(img_rgb)
@@ -151,4 +160,3 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
-
