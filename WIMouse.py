@@ -4,9 +4,21 @@ import pyautogui
 import time
 import numpy as np
 
-#initialising mediapipe
+# GPU initialization
+print("Initializing GPU support...")
+use_cuda = cv2.cuda.getCudaEnabledDeviceCount() > 0
+
+if use_cuda:
+    print(f"CUDA Enabled Devices: {cv2.cuda.getCudaEnabledDeviceCount()}")
+    print(f"CUDA Device Name: {cv2.cuda.printCudaDeviceInfo(0)}")
+    cv2.cuda.setDevice(0)  # Set primary GPU
+else:
+    print("GPU not available, using CPU")
+
+# Initialising mediapipe
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
+
 hands = mp_hands.Hands(
     max_num_hands=1,
     min_detection_confidence=0.7,
@@ -18,8 +30,6 @@ cap = cv2.VideoCapture(0)
 cap.set(3, 640)
 cap.set(4, 480)
 cap.set(cv2.CAP_PROP_BRIGHTNESS, 150)
-
-use_cuda = cv2.cuda.getCudaEnabledDeviceCount() > 0
 
 def fingers_up(hand):
     tips = [4, 8, 12, 16, 20]
@@ -45,8 +55,12 @@ hand_active = False
 last_hand_seen_time = 0
 hand_timeout = 1.0
 
+# GPU memory allocation for frame processing
 if use_cuda:
     gpu_frame = cv2.cuda_GpuMat()
+    gpu_flipped = cv2.cuda_GpuMat()
+    gpu_rgb = cv2.cuda_GpuMat()
+    gpu_stream = cv2.cuda.Stream()  # Asynchronous stream for better performance
 
 while True:
     success, img = cap.read()
@@ -54,11 +68,23 @@ while True:
         break
 
     if use_cuda:
-        gpu_frame.upload(img)
-        gpu_flipped = cv2.cuda.flip(gpu_frame, 1)     # GPU flip
-        gpu_rgb = cv2.cuda.cvtColor(gpu_flipped, cv2.COLOR_BGR2RGB)  # GPU BGR→RGB
-        img_rgb = gpu_rgb.download()   # Download only once for mediapipe
-        img = gpu_flipped.download()
+        try:
+            # Upload frame to GPU
+            gpu_frame.upload(img)
+            
+            # GPU operations - flip and color conversion on GPU
+            gpu_flipped = cv2.cuda.flip(gpu_frame, 1)  # Flip on GPU
+            gpu_rgb = cv2.cuda.cvtColor(gpu_flipped, cv2.COLOR_BGR2RGB)  # Color conversion on GPU
+            
+            # Download only the RGB frame for mediapipe processing
+            img_rgb = gpu_rgb.download()
+            img = gpu_flipped.download()  # Get flipped frame for display
+            
+        except cv2.error as e:
+            print(f"GPU error: {e}, falling back to CPU")
+            use_cuda = False
+            img = cv2.flip(img, 1)
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     else:
         img = cv2.flip(img, 1)
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
