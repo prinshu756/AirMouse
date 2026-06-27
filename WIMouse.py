@@ -4,9 +4,7 @@ import pyautogui
 import time
 import numpy as np
 
-
 # GPU initialization 
-print("Initializing RTX 3050 GPU support with OpenCL...")
 try:
     # Check OpenCL availability 
     if cv2.ocl.haveOpenCL():
@@ -57,6 +55,10 @@ cap = cv2.VideoCapture(0)
 cap.set(3, 640)
 cap.set(4, 480)
 cap.set(cv2.CAP_PROP_BRIGHTNESS, 150)
+
+# Create window and keep it on top always
+cv2.namedWindow("Image", cv2.WINDOW_NORMAL)
+cv2.setWindowProperty("Image", cv2.WND_PROP_TOPMOST, 1)
 
 def fingers_up(hand):
     tips = [4, 8, 12, 16, 20] 
